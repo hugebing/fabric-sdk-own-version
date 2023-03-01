@@ -3,13 +3,14 @@ const { Console } = require("console");
 const fs = require("fs");
 
 let timeOfFile = Date.now();
-// make a new logger
+const folderName = process.env.folderName;
 
 const logOfTransaction = new Console({
-    stdout: fs.createWriteStream(`${timeOfFile}_logOfTransaction`),
+    stdout: fs.createWriteStream(`data/${folderName}/${timeOfFile}_logOfTransaction`),
 });
+
 const logOfResult = new Console({
-    stdout: fs.createWriteStream(`${timeOfFile}_logOfResult`),
+    stdout: fs.createWriteStream(`data/${folderName}/${timeOfFile}_logOfResult`),
 });
 
 var oneByOneQueue = {};
@@ -50,9 +51,11 @@ async function addNormalQueue(transaction, needResned, ...args) {
     
 }
 
-async function addOneByOneQueue (transaction, needResned,  ...args) {
+async function addOneByOneQueue (transaction, needResned, key,  ...args) {
     return new Promise((res, rej) => {
-        let key = `${transaction.contract.chaincodeId}_${transaction.name}`;
+        if(key==undefined){
+            key = `${transaction.contract.chaincodeId}_${transaction.name}`;
+        }
         if (oneByOneQueue[key] == undefined){
             oneByOneQueue[key] = [];
         }
@@ -95,7 +98,7 @@ exports.oneByOneController = async () => {
             if (!oneByOneQueue[key].length) {
                 delete oneByOneQueue[key];
             }
-            console.log(oneByOneQueue);
+            // console.log(oneByOneQueue);
             addPendingTransaction();
             const result = await submitTransaction(transaction, needResned, args);
             oneByOneLock[key] = false;
@@ -107,15 +110,15 @@ exports.oneByOneController = async () => {
 async function transactionResend(transaction, needResned, args, countOfResned){
     countOfResned += 1;
     let time = 0
-    if(countOfResned <= 4){
-        time = Math.pow(2, countOfResned);
-    } else {
-        time = 16;
-    }
+    // if(countOfResned <= 4){
+    //     time = Math.pow(2, countOfResned);
+    // } else {
+    //     time = 16;
+    // }
     console.log(`Trsanction ID ${transaction.getTransactionId()} MVCC_READ_CONFLICT "RESEND" WAIT ${time}`);
     await wait(Math.floor(Math.random() * time * 1000));
     let newTransaction = await createTransactionAndGetData(transaction.contract, transaction.name);
-    console.log(countOfResned);
+    // console.log(countOfResned);
     return await submitTransaction(newTransaction, needResned, args, countOfResned).then((res)=>{
         return [newTransaction.getTransactionId(), res, countOfResned];
     });
@@ -167,25 +170,21 @@ async function submitTransaction(transaction, needResned, args, countOfResned=0)
     }         
 }
 
-// oneByOneQueue
-exports.oneByOnePlusResend = async (contract, name, ...args) => {
+exports.oneByOnePlusResend = async (contract, name, key, ...args) => {
     let transaction = await createTransactionAndGetData(contract, name);
-    return await addOneByOneQueue(transaction, true, ...args);
+    return await addOneByOneQueue(transaction, true, key, ...args);
 }
 
-// PlusResend 沒加上計數
 exports.normalPlusResend = async (contract, name, ...args) => {
     let transaction = await createTransactionAndGetData(contract, name);
     return await addNormalQueue(transaction, true, ...args);
 }
 
-// oneByOneQueue
-exports.oneByOne = async (contract, name, ...args) => {
+exports.oneByOne = async (contract, name, key, ...args) => {
     let transaction = await createTransactionAndGetData(contract, name);
-    return await addOneByOneQueue(transaction, false, ...args);
+    return await addOneByOneQueue(transaction, false, key, ...args);
 }
 
-// normal 沒加上計數
 exports.normal = async (contract, name, ...args) => {
     let transaction = await createTransactionAndGetData(contract, name);
     return await addNormalQueue(transaction, false, ...args);
@@ -243,5 +242,7 @@ exports.controllerParameterModify = async () => {
     preTime = nowTime;
     amountOfCompleteTransactionOfPreTime = amountOfCompleteTransactionOfNow;
     amountOfMvccrcOfPreTime = amountOfMvccrcOfNow;
+
+    return result;
 }
 
