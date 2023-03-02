@@ -156,12 +156,14 @@ async function submitTransaction(transaction, type, args, countOfResned=0){
                     minusPendingTransaction();
                     return [transaction.getTransactionId(), 'MVCCRC'];
                 }  
-            } else if (errMg[0].toString().includes("exceeding concurrency limit") || errMg[0].toString().includes("No valid responses from any peers") || errMg[0].toString().includes("No endorsement plan available")){
+            } else if (errMg.toString().includes("exceeding concurrency limit") || errMg[0].toString().includes("No endorsement plan available")){
                 countOfExorbitantRPS += 1;
-                logOfTransaction.log([transaction.getTransactionId(), 'ERROR TOO MANY TRANSACTION', countOfResned, startTime, Date.now()]);
-                console.log(`Trsanction ID ${transaction.getTransactionId()} ERROR TOO MANY TRANSACTION "RESEND"`);
+                logOfTransaction.log([transaction.getTransactionId(), 'ERROR TOO MANY TRANSACTION OR PARAMETER ERROR', countOfResned, startTime, Date.now()]);
                 amountOfErrorOfTransaction += 1;
-                return await transactionResend(transaction, type, args, countOfResned);
+                // if (type == 1 || type == 2){
+                //     return await transactionResend(transaction, type, args, countOfResned);
+                // }
+                return await transactionResend(transaction, 2, args, countOfResned);
             } else {
                 countOfError += 1;
                 minusPendingTransaction();

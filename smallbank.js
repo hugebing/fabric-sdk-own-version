@@ -8,8 +8,17 @@
 
 require('dotenv').config();
 
+
+// for(let i=0;i<200;i++){
+//     console.log(sample())
+// }
+
 // 須帶入的參數
+const folderName = process.env.folderName;
 const amountOfAccount = parseInt(process.env.amountOfAccount);
+const skew = parseFloat(process.env.skew);
+const probOfFunc = parseInt(process.env.probOfFunc);
+const type = parseInt(process.env.type);
 // const mintBool = (process.env.mintBool === 'true');
 // const amountOfAccount = parseInt(process.env.amountOfAccount);
 // const amountOfHotAccount = parseInt(process.env.amountOfHotAccount);
@@ -40,10 +49,6 @@ const amountOfAccount = parseInt(process.env.amountOfAccount);
 // console.log(totalDuration);
 
 
-const mintBool = false;
-const amountOfHotAccount = 10;
-const probOfSendHotAccount = 0;
-const probOfReceiptHotAccount = 0;
 // const resendLatencyBool = false;
 const benchmarkType = 'fixRate';
 const rps = 200;
@@ -53,7 +58,7 @@ const totalDuration = 60000;
 // const chaincodeFunc = 0;
 // const txLoadUpper = 0;
 // const needResendBool = 1;
-
+let contract;
 
 
 
@@ -69,7 +74,7 @@ let txData = [];
 let gateways = [];
 let getBalanceComplete = 0;
 let transferComplete = 0;
-let type = 0;
+
 
 
 
@@ -105,6 +110,8 @@ const orgUserId = `appUser`;
 const testFolder = './tests/';
 const fs = require('fs');
 var protobuf = require("protobufjs/light");
+const zipfian = require('zipfian-integer')
+const sample = zipfian(0, amountOfAccount-1, skew)
 
 let ccp;
 let wallet;
@@ -253,10 +260,9 @@ async function getCC(ccp, wallet, user) {
 
 async function createAccount(contract, type, id, name, checkingBalance, savingsBalance) {
     try {
-        let key = id;
         var args = [id, name, checkingBalance, savingsBalance].map(d => `"${d}"`).join(',');
         // console.log(`"[${args}]"`);
-        return await oneByOne(contract, type, 'CreateAccount', key, [`[${args}]`]);
+        return await normal(contract, type, 'CreateAccount', [`[${args}]`]);
     } catch (error) {
         console.error(`******** FAILED to createAccount: ${error}`);
         return error;
@@ -305,7 +311,7 @@ async function transactSavings(contract, type, savingValue, id) {
 
 async function depositChecking(contract, type, checkingValue, id) {
     try {
-        var args = [checkingValue, checkingValue, id].map(d => `"${d}"`).join(',');
+        var args = [checkingValue, id].map(d => `"${d}"`).join(',');
         return await normal(contract, type, 'DepositChecking', [`[${args}]`]);
     } catch (error) {
         console.error(`******** FAILED to depositChecking: ${error}`);
@@ -323,40 +329,198 @@ async function amalgamate(contract, type, toId, fromId) {
     }
 }
 
+
+// transaction.js
+// 1. result
+// 2. chaincode name
+// 3. 參數
+// 4. tx id
+
 function getRandom(min, max) {
     return Math.floor(Math.random() * (max - min)) + min;
 };
 
+let functionOfSuccessCount = [0, 0, 0, 0, 0, 0]
+let functionOfMvccrcCount = [0, 0, 0, 0, 0, 0]
+async function fixRate() {
+
+    let preTime = Date.now()
+    let count = 0;
+    while (true){
+        if(Date.now() - preTime >= totalDuration){
+            break;
+        }
+
+        for(let i = 0;i < rps;i++){ 
+            if(getRandom(1, 101)>probOfFunc){
+                query(contract, type, sample()).then((res)=>{
+                    if(res[1]=="MVCCRC"){
+                        functionOfMvccrcCount[0]++;
+                    } else {
+                        functionOfSuccessCount[0]++;
+                    }
+                })
+            } else {
+                let functionNum = getRandom(1, 6);
+                let checkingValue = 1;
+                let savingValue = 1;
+                let fromId = sample();
+                let toId = sample();
+                let id = sample();
+                if(functionNum==1){
+                    sendPayment(contract, type, checkingValue, toId, fromId).then((res)=>{  
+                        if(res[1]=="MVCCRC"){    
+                            functionOfMvccrcCount[1]++;
+                        } else {
+                            functionOfSuccessCount[1]++;
+                        }
+                        
+                    })
+                    console.log(`sendPayment`);
+                } else if (functionNum==2){
+                    writeCheck(contract, type, checkingValue, id).then((res)=>{
+                        if(res[1]=="MVCCRC"){
+                            functionOfMvccrcCount[2]++;
+                        } else {
+                            functionOfSuccessCount[2]++;
+                        }
+                    })
+                    console.log(`writeCheck`);
+                } else if (functionNum==3){
+                    transactSavings(contract, type, savingValue, id).then((res)=>{
+                        if(res[1]=="MVCCRC"){
+                            functionOfMvccrcCount[3]++;
+                        } else {
+                            functionOfSuccessCount[3]++;
+                        }
+                    })
+                    console.log(`transactSavings`);
+                } else if (functionNum==4){
+                    depositChecking(contract, type, checkingValue, id).then((res)=>{
+                        if(res[1]=="MVCCRC"){
+                            functionOfMvccrcCount[4]++;
+                        } else {
+                            functionOfSuccessCount[4]++;
+                        }
+                    })
+                    console.log(`depositChecking`);
+                } else if (functionNum==5){
+                    amalgamate(contract, type, toId, fromId).then((res)=>{
+                        if(res[1]=="MVCCRC"){
+                            functionOfMvccrcCount[5]++;
+                        } else {
+                            functionOfSuccessCount[5]++;
+                        }
+                    })
+                    console.log(`amalgamate`);
+                }
+            }
+
+            count ++;
+        }
+        console.log(count);
+        await wait(1000 - ((Date.now()- preTime) % 1000));
+    }
+}
+
+// async function getRawData(){
+//     for(let i=0;i<txData.length;i++){
+//         if (i%300==0){
+//             await wait(1000);
+//         }
+//         let blockData = await qsccContract.evaluateTransaction('GetBlockByTxID', channelName, txData[i][0]);
+//         const blockDataJson = BlockDecoder.decode(blockData);
+//         txData[i].push(blockDataJson['header']['number']['low']);
+//     }
+// }
+
+
+
+
 async function main(){
 
-    let startTime = Date.now() + (30000 - (Date.now() % 30000)) + 30000;
+    let startTime = Date.now() + (1000 - (Date.now() % 1000)) + 1000;
 
-    setInterval(function(){ controllerParameterModify() }, 1000);
-    setInterval(function(){ normalController() }, 100);
-    setInterval(function(){ oneByOneController() }, 100);
+    var controllerParameterModifyInterval = setInterval(function(){ controllerParameterModify() }, 1000);
+    var normalControllerInterval = setInterval(function(){ normalController() }, 100);
+    var oneByOneControllerInterval = setInterval(function(){ oneByOneController() }, 100);
 
     let users = [];
-    deleteFiles('./simulateTransferWallet');
-    deleteFiles('./transferWallet');
-    ccp, wallet, users = await enrollUsers(1)
-    const contract = await getCC(ccp, wallet, users[0]);
-    let successOfCreateAccount = 0;
-
-    for (let i = 0; i < amountOfAccount; i++){
-        try {
-            createAccount(contract, type, `${i}`, `n_${i}`, `1000`, `500`).then(async (res)=>{
-                res[1] = res[1].toString();
-                console.log(res);
-                successOfCreateAccount++;
-                console.log(successOfCreateAccount);
-                if(successOfCreateAccount==amountOfAccount){
-                    process.exit();
-                }
-                // console.log(query(contract, i));
-            });  
-        } catch (error) {
-            console.error(`******** FAILED to mint: ${error}`);
+    fs.readdirSync('./transferWallet').forEach(file => {
+        if(file.includes('appUser')){
+            users.push(file.slice(0, -3)) 
         }
+    });
+    ccp = await buildCCPOrg1(GRPC.toString());
+    wallet = await buildWallet(Wallets, walletPath);
+    contract = await getCC(ccp, wallet, users[0]);
+
+
+    const readFile = require("util").promisify(fs.readFile);
+
+    async function runRead(filePath) {
+        try {
+            const fr = await readFile(filePath,"utf-8");
+            return fr;
+        } catch (err) {
+            console.log('Error', err);
+        }    
+    }
+
+    if(benchmarkType=='fixRate'){
+        await wait(startTime - Date.now());
+        console.log(`開始時間時間時間時間時間時間 ${Date.now()}`);
+        await fixRate();
+        await controllerParameterModify().then(async (res)=>{
+            let result = {
+                "folderName": folderName,
+                "amountOfCompleteTransaction": res.amountOfCompleteTransaction,
+                "amountOfMvccrc": res.amountOfMvccrcOfNow,
+                "queryOfSucces": functionOfSuccessCount[0],
+                "sendPaymentOfSucces": functionOfSuccessCount[1],
+                "writeCheckOfSucces": functionOfSuccessCount[2],
+                "transactSavingsOfSucces": functionOfSuccessCount[3],
+                "depositCheckingOfSucces": functionOfSuccessCount[4],
+                "amalgamateOfSucces": functionOfSuccessCount[5],
+                "queryOfMvccrc": functionOfMvccrcCount[0],
+                "sendPaymentOfMvccrc": functionOfMvccrcCount[1],
+                "writeCheckOfMvccrc": functionOfMvccrcCount[2],
+                "transactSavingsOfMvccrc": functionOfMvccrcCount[3],
+                "depositCheckingOfMvccrc": functionOfMvccrcCount[4],
+                "amalgamateOfMvccrc": functionOfMvccrcCount[5],
+                "tps": res.amountOfCompleteTransaction/(totalDuration/1000)
+            }
+            clearInterval(controllerParameterModifyInterval);
+            clearInterval(oneByOneControllerInterval);
+            clearInterval(normalControllerInterval);
+            await wait(process.argv[2]*500);
+            // fs.writeFileSync(`data/${folderName}/data.txt`, JSON.stringify(result));
+            if(fs.existsSync(`data/${folderName}/total.txt`)==true){
+                await runRead(`data/${folderName}/total.txt`).then((res)=>{
+                    res = JSON.parse(res);
+                    result.amountOfCompleteTransaction += res.amountOfCompleteTransaction;
+                    result.amountOfMvccrc += res.amountOfMvccrc;
+                    result.queryOfSucces += res.queryOfSucces;
+                    result.sendPaymentOfSucces += res.sendPaymentOfSucces;
+                    result.writeCheckOfSucces += res.writeCheckOfSucces;
+                    result.transactSavingsOfSucces += res.transactSavingsOfSucces;
+                    result.depositCheckingOfSucces += res.depositCheckingOfSucces;
+                    result.amalgamateOfSucces += res.amalgamateOfSucces;
+                    result.queryOfMvccrc += res.queryOfMvccrc;
+                    result.sendPaymentOfMvccrc += res.sendPaymentOfMvccrc;
+                    result.writeCheckOfMvccrc += res.writeCheckOfMvccrc;
+                    result.transactSavingsOfMvccrc += res.transactSavingsOfMvccrc;
+                    result.depositCheckingOfMvccrc += res.depositCheckingOfMvccrc;
+                    result.amalgamateOfMvccrc += res.amalgamateOfMvccrc;
+                    result.tps = result.amountOfCompleteTransaction/(totalDuration/1000)
+                })
+                fs.writeFileSync(`data/${folderName}/total.txt`, JSON.stringify(result));
+            } else {
+                fs.writeFileSync(`data/${folderName}/total.txt`, JSON.stringify(result));
+            }
+        })
+        console.log(`結束時間時間時間時間時間時間 ${Date.now()}`);
+        process.exit();
     }
 
 }

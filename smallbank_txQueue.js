@@ -15,6 +15,10 @@ require('dotenv').config();
 
 // 須帶入的參數
 const folderName = process.env.folderName;
+const amountOfAccount = parseInt(process.env.amountOfAccount);
+const skew = parseFloat(process.env.skew);
+const probOfFunc = parseInt(process.env.probOfFunc);
+const type = parseInt(process.env.type);
 // const mintBool = (process.env.mintBool === 'true');
 // const amountOfAccount = parseInt(process.env.amountOfAccount);
 // const amountOfHotAccount = parseInt(process.env.amountOfHotAccount);
@@ -45,11 +49,6 @@ const folderName = process.env.folderName;
 // console.log(totalDuration);
 
 
-const mintBool = false;
-const amountOfAccount = 10000;
-const amountOfHotAccount = 10;
-const probOfSendHotAccount = 0;
-const probOfReceiptHotAccount = 0;
 // const resendLatencyBool = false;
 const benchmarkType = 'fixRate';
 const rps = 200;
@@ -75,7 +74,6 @@ let txData = [];
 let gateways = [];
 let getBalanceComplete = 0;
 let transferComplete = 0;
-let type = 0;
 
 
 
@@ -113,7 +111,7 @@ const testFolder = './tests/';
 const fs = require('fs');
 var protobuf = require("protobufjs/light");
 const zipfian = require('zipfian-integer')
-const sample = zipfian(0, amountOfAccount-1, 1)
+const sample = zipfian(0, amountOfAccount-1, skew)
 
 let ccp;
 let wallet;
@@ -265,7 +263,7 @@ async function createAccount(contract, type, id, name, checkingBalance, savingsB
         let key = id;
         var args = [id, name, checkingBalance, savingsBalance].map(d => `"${d}"`).join(',');
         // console.log(`"[${args}]"`);
-        return await oneByOne(contract, 'CreateAccount', type, key, [`[${args}]`]);
+        return await oneByOne(contract, type, 'CreateAccount', key, [`[${args}]`]);
     } catch (error) {
         console.error(`******** FAILED to createAccount: ${error}`);
         return error;
@@ -371,7 +369,7 @@ async function fixRate() {
         }
 
         for(let i = 0;i < rps;i++){ 
-            if(getRandom(1, 101)>5){
+            if(getRandom(1, 101)>probOfFunc){
                 query(contract, type, sample()).then((res)=>{
                     if(res[1]=="MVCCRC"){
                         functionOfMvccrcCount[0]++;
@@ -406,7 +404,7 @@ async function fixRate() {
                     })
                     console.log(`writeCheck`);
                 } else if (functionNum==3){
-                    transactSavings(contract, savingValue, id).then((res)=>{
+                    transactSavings(contract, type, savingValue, id).then((res)=>{
                         if(res[1]=="MVCCRC"){
                             functionOfMvccrcCount[3]++;
                         } else {
@@ -460,9 +458,9 @@ async function main(){
 
     let startTime = Date.now() + (1000 - (Date.now() % 1000)) + 1000;
 
-    setInterval(function(){ controllerParameterModify() }, 1000);
-    setInterval(function(){ normalController() }, 100);
-    setInterval(function(){ oneByOneController() }, 100);
+    var controllerParameterModifyInterval = setInterval(function(){ controllerParameterModify() }, 1000);
+    var normalControllerInterval = setInterval(function(){ normalController() }, 100);
+    var oneByOneControllerInterval = setInterval(function(){ oneByOneController() }, 100);
 
     let users = [];
     fs.readdirSync('./transferWallet').forEach(file => {
@@ -509,6 +507,10 @@ async function main(){
                 "amalgamateOfMvccrc": functionOfMvccrcCount[5],
                 "tps": res.amountOfCompleteTransaction/(totalDuration/1000)
             }
+            clearInterval(controllerParameterModifyInterval);
+            clearInterval(oneByOneControllerInterval);
+            clearInterval(normalControllerInterval);
+            await wait(process.argv[2]*500);
             // fs.writeFileSync(`data/${folderName}/data.txt`, JSON.stringify(result));
             if(fs.existsSync(`data/${folderName}/total.txt`)==true){
                 await runRead(`data/${folderName}/total.txt`).then((res)=>{
