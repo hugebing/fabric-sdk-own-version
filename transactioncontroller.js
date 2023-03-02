@@ -44,14 +44,14 @@ function wait(ms) {
     return new Promise(resolve => setTimeout(() => resolve(), ms));
 };
 
-async function addNormalQueue(transaction, needResned, ...args) {
+async function addNormalQueue(transaction, type, ...args) {
     return new Promise((res, rej) => {
-        normalQueue.push([transaction, needResned, res, args]);
+        normalQueue.push([transaction, type, res, args]);
     })
     
 }
 
-async function addOneByOneQueue (transaction, needResned, key,  ...args) {
+async function addOneByOneQueue (transaction, type, key,  ...args) {
     return new Promise((res, rej) => {
         if(key==undefined){
             key = `${transaction.contract.chaincodeId}_${transaction.name}`;
@@ -59,7 +59,7 @@ async function addOneByOneQueue (transaction, needResned, key,  ...args) {
         if (oneByOneQueue[key] == undefined){
             oneByOneQueue[key] = [];
         }
-        oneByOneQueue[key].push([transaction, needResned, res, args]);
+        oneByOneQueue[key].push([transaction, type, res, args]);
     })
 }
 
@@ -79,9 +79,9 @@ exports.normalController = async () => {;
         if(normalQueue.length == 0 || amountOfPendingTransaction >= upperOfPendingTransaction){
             break;
         }
-        const [transaction, needResned, callback, args] = getNormalQueue();
+        const [transaction, type, callback, args] = getNormalQueue();
         addPendingTransaction();
-        const result = await submitTransaction(transaction, needResned, args);
+        const result = await submitTransaction(transaction, type, args);
         callback(result);
     }
 }
@@ -90,7 +90,7 @@ exports.oneByOneController = async () => {
     for (var key in oneByOneQueue){
         if (oneByOneLock[key] != true) { 
             let transaction = oneByOneQueue[key][0][0];
-            let needResned = oneByOneQueue[key][0][1];
+            let type = oneByOneQueue[key][0][1];
             let callback = oneByOneQueue[key][0][2];
             let args = oneByOneQueue[key][0][3];
             oneByOneLock[key] = true;
@@ -100,37 +100,40 @@ exports.oneByOneController = async () => {
             }
             // console.log(oneByOneQueue);
             addPendingTransaction();
-            const result = await submitTransaction(transaction, needResned, args);
+            const result = await submitTransaction(transaction, type, args);
             oneByOneLock[key] = false;
             callback(result);
         }
     }
 }
 
-async function transactionResend(transaction, needResned, args, countOfResned){
+async function transactionResend(transaction, type, args, countOfResned){
     countOfResned += 1;
     let time = 0
-    // if(countOfResned <= 4){
-    //     time = Math.pow(2, countOfResned);
-    // } else {
-    //     time = 16;
-    // }
+    if (type==2){
+        if(countOfResned <= 4){
+            time = Math.pow(2, countOfResned);
+        } else {
+            time = 16;
+        }
+    }
+    
     console.log(`Trsanction ID ${transaction.getTransactionId()} MVCC_READ_CONFLICT "RESEND" WAIT ${time}`);
     await wait(Math.floor(Math.random() * time * 1000));
     let newTransaction = await createTransactionAndGetData(transaction.contract, transaction.name);
     // console.log(countOfResned);
-    return await submitTransaction(newTransaction, needResned, args, countOfResned).then((res)=>{
+    return await submitTransaction(newTransaction, type, args, countOfResned).then((res)=>{
         return [newTransaction.getTransactionId(), res, countOfResned];
     });
 }
 
-async function submitTransaction(transaction, needResned, args, countOfResned=0){
+async function submitTransaction(transaction, type, args, countOfResned=0){
     let startTime = Date.now();
     try {
         return await transaction.submit(...args).then((res) => {
             minusPendingTransaction();
             amountOfCompleteTransaction += 1;
-            logOfTransaction.log([transaction.getTransactionId(), res, countOfResned, startTime, Date.now()]);
+            logOfTransaction.log([transaction.getTransactionId(), res.toString(), countOfResned, startTime, Date.now()]);
             
             if(amountOfFuncOfNormalTransaction[transaction.getName()] == undefined){
                 amountOfFuncOfNormalTransaction[transaction.getName()] = 1;
@@ -138,16 +141,16 @@ async function submitTransaction(transaction, needResned, args, countOfResned=0)
             return [transaction.getTransactionId(), res, countOfResned];
         });
     } catch (errMg) {
-        if (errMg[0]!=undefined){
-            if (errMg[0].toString().includes("MVCC_READ_CONFLICT")) {
+        if (errMg!=undefined){
+            if (errMg.toString().includes("MVCC_READ_CONFLICT")) {
                 if(ratioOfFuncOfMvccrc[transaction.getName()] == undefined){
                     ratioOfFuncOfMvccrc[transaction.getName()] = 1;
                 }
                 ratioOfFuncOfMvccrc[transaction.getName()] += 1;
                 logOfTransaction.log([transaction.getTransactionId(), 'MVCCRC', countOfResned, startTime, Date.now()]);
                 amountOfMvccrc += 1;
-                if (needResned == true){
-                    return await transactionResend(transaction, needResned, args, countOfResned);
+                if (type == 1 || type == 2){
+                    return await transactionResend(transaction, type, args, countOfResned);
                 } else {
                     console.log(`Trsanction ID ${transaction.getTransactionId()} MVCC_READ_CONFLICT "NO RESEND"`);
                     minusPendingTransaction();
@@ -158,40 +161,50 @@ async function submitTransaction(transaction, needResned, args, countOfResned=0)
                 logOfTransaction.log([transaction.getTransactionId(), 'ERROR TOO MANY TRANSACTION', countOfResned, startTime, Date.now()]);
                 console.log(`Trsanction ID ${transaction.getTransactionId()} ERROR TOO MANY TRANSACTION "RESEND"`);
                 amountOfErrorOfTransaction += 1;
-                return await transactionResend(transaction, needResned, args, countOfResned);
+                return await transactionResend(transaction, type, args, countOfResned);
             } else {
                 countOfError += 1;
                 minusPendingTransaction();
             }  
         } else {
+            logOfTransaction.log([transaction.getTransactionId(), 'Other Error', countOfResned, startTime, Date.now()]);
             minusPendingTransaction();
         }
         throw errMg;
     }         
 }
 
-exports.oneByOnePlusResend = async (contract, name, key, ...args) => {
+// exports.oneByOneResendDelay = async (contract, name, key, ...args) => {
+//     let transaction = await createTransactionAndGetData(contract, name);
+//     return await addOneByOneQueue(transaction, 2, key, ...args);
+// }
+
+// exports.normalResendDelay = async (contract, name, ...args) => {
+//     let transaction = await createTransactionAndGetData(contract, name);
+//     return await addNormalQueue(transaction, 2, ...args);
+// }
+
+// exports.oneByOneResend = async (contract, name, key, ...args) => {
+//     let transaction = await createTransactionAndGetData(contract, name);
+//     return await addOneByOneQueue(transaction, 1, key, ...args);
+// }
+
+// exports.normalResend = async (contract, name, ...args) => {
+//     let transaction = await createTransactionAndGetData(contract, name);
+//     return await addNormalQueue(transaction, 1, ...args);
+// }
+
+exports.oneByOne = async (contract, type, name, key, ...args) => {
     let transaction = await createTransactionAndGetData(contract, name);
-    return await addOneByOneQueue(transaction, true, key, ...args);
+    return await addOneByOneQueue(transaction, type, key, ...args);
 }
 
-exports.normalPlusResend = async (contract, name, ...args) => {
+exports.normal = async (contract, type, name, ...args) => {
     let transaction = await createTransactionAndGetData(contract, name);
-    return await addNormalQueue(transaction, true, ...args);
+    return await addNormalQueue(transaction, type, ...args);
 }
 
-exports.oneByOne = async (contract, name, key, ...args) => {
-    let transaction = await createTransactionAndGetData(contract, name);
-    return await addOneByOneQueue(transaction, false, key, ...args);
-}
-
-exports.normal = async (contract, name, ...args) => {
-    let transaction = await createTransactionAndGetData(contract, name);
-    return await addNormalQueue(transaction, false, ...args);
-}
-
-// 
-exports.evaluateTransactionPlusResend = async (contract, name, ...args) => {
+exports.evaluateTransactionResend = async (contract, name, ...args) => {
     try{
         return await contract.evaluateTransaction(name, ...args);
     } catch (errMg) {

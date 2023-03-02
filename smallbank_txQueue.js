@@ -8,9 +8,6 @@
 
 require('dotenv').config();
 
-const zipfian = require('zipfian-integer')
-const sample = zipfian(0, 199, 1)
-
 
 // for(let i=0;i<200;i++){
 //     console.log(sample())
@@ -49,7 +46,7 @@ const folderName = process.env.folderName;
 
 
 const mintBool = false;
-const amountOfAccount = 200;
+const amountOfAccount = 10000;
 const amountOfHotAccount = 10;
 const probOfSendHotAccount = 0;
 const probOfReceiptHotAccount = 0;
@@ -78,6 +75,7 @@ let txData = [];
 let gateways = [];
 let getBalanceComplete = 0;
 let transferComplete = 0;
+let type = 0;
 
 
 
@@ -97,7 +95,7 @@ let count = 0; // count = success + fail1 + fail2
 
 const { Gateway, Wallets } = require('fabric-network');
 const FabricCAServices = require('fabric-ca-client');
-const { controllerParameterModify, oneByOnePlusResend, normalPlusResend, evaluateTransactionPlusResend, oneByOneController, normalController, oneByOne, normal, controller } = require('./transactioncontroller');
+const { controllerParameterModify, oneByOneResend, normalResend, oneByOneResendDelay, normalResendDelay, evaluateTransactionResend, oneByOneController, normalController, oneByOne, normal, controller} = require('./transactioncontroller');
 const path = require('path');
 const { buildCAClient, registerAndEnrollUser, enrollAdmin } = require('./test-application/javascript/CAUtil.js');
 const { buildCCPOrg1, buildWallet } = require('./test-application/javascript/AppUtil.js');
@@ -114,6 +112,8 @@ const orgUserId = `appUser`;
 const testFolder = './tests/';
 const fs = require('fs');
 var protobuf = require("protobufjs/light");
+const zipfian = require('zipfian-integer')
+const sample = zipfian(0, amountOfAccount-1, 1)
 
 let ccp;
 let wallet;
@@ -260,30 +260,30 @@ async function getCC(ccp, wallet, user) {
 
 
 
-async function createAccount(contract, id, name, checkingBalance, savingsBalance) {
+async function createAccount(contract, type, id, name, checkingBalance, savingsBalance) {
     try {
         let key = id;
         var args = [id, name, checkingBalance, savingsBalance].map(d => `"${d}"`).join(',');
         // console.log(`"[${args}]"`);
-        return await oneByOne(contract, 'CreateAccount', key, [`[${args}]`]);
+        return await oneByOne(contract, 'CreateAccount', type, key, [`[${args}]`]);
     } catch (error) {
         console.error(`******** FAILED to createAccount: ${error}`);
         return error;
     }
 }
 
-async function query(contract, id) {
+async function query(contract, type, id) {
     try {
         let key = id;
         var args = [id].map(d => `"${d}"`).join(',');
-        return await oneByOnePlusResend(contract, 'Query', key, [`[${args}]`]);
+        return await oneByOne(contract, type, 'Query', key, [`[${args}]`]);
     } catch (error) {
         console.error(`******** FAILED to query: ${error}`);
     }
 
 }
 
-async function sendPayment(contract, checkingValue, toId, fromId) {
+async function sendPayment(contract, type, checkingValue, toId, fromId) {
     try {
         let key;
         if(fromId < toId){
@@ -292,47 +292,47 @@ async function sendPayment(contract, checkingValue, toId, fromId) {
             key = `${toId}_${fromId}`;
         }
         var args = [checkingValue, toId, fromId].map(d => `"${d}"`).join(',');
-        return await oneByOnePlusResend(contract, 'SendPayment', key, [`[${args}]`]);
+        return await oneByOne(contract, type, 'SendPayment', key, [`[${args}]`]);
     } catch (error) {
         console.error(`******** FAILED to sendPayment: ${error}`);
         return error;
     }
 }
 
-async function writeCheck(contract, checkingValue, id) {
+async function writeCheck(contract, type, checkingValue, id) {
     try {
         let key = id;
         var args = [checkingValue, id].map(d => `"${d}"`).join(',');
-        return await oneByOnePlusResend(contract, 'WriteCheck', key, [`[${args}]`]);
+        return await oneByOne(contract, type, 'WriteCheck', key, [`[${args}]`]);
     } catch (error) {
         console.error(`******** FAILED to writeCheck: ${error}`);
         return error;
     }
 }
 
-async function transactSavings(contract, savingValue, id) {
+async function transactSavings(contract, type, savingValue, id) {
     try {
         let key = id;
         var args = [savingValue, id].map(d => `"${d}"`).join(',');
-        return await oneByOnePlusResend(contract, 'TransactSavings', key, [`[${args}]`]);
+        return await oneByOne(contract, type, 'TransactSavings', key, [`[${args}]`]);
     } catch (error) {
         console.error(`******** FAILED to transactSavings: ${error}`);
         return error;
     }
 }
 
-async function depositChecking(contract, checkingValue, id) {
+async function depositChecking(contract, type, checkingValue, id) {
     try {
         let key = id;
         var args = [checkingValue, id].map(d => `"${d}"`).join(',');
-        return await oneByOnePlusResend(contract, 'DepositChecking', key, [`[${args}]`]);
+        return await oneByOne(contract, type, 'DepositChecking', key, [`[${args}]`]);
     } catch (error) {
         console.error(`******** FAILED to depositChecking: ${error}`);
         return error;
     }
 }
 
-async function amalgamate(contract, toId, fromId) {
+async function amalgamate(contract, type, toId, fromId) {
     try {
         let key;
         if(fromId < toId){
@@ -341,7 +341,7 @@ async function amalgamate(contract, toId, fromId) {
             key = `${toId}_${fromId}`;
         }
         var args = [toId, fromId].map(d => `"${d}"`).join(',');
-        return await oneByOnePlusResend(contract, 'amalgamate', key, [`[${args}]`]);
+        return await oneByOne(contract, type, 'amalgamate', key, [`[${args}]`]);
     } catch (error) {
         console.error(`******** FAILED to amalgamate: ${error}`);
         return error;
@@ -372,7 +372,7 @@ async function fixRate() {
 
         for(let i = 0;i < rps;i++){ 
             if(getRandom(1, 101)>5){
-                query(contract, sample()).then((res)=>{
+                query(contract, type, sample()).then((res)=>{
                     if(res[1]=="MVCCRC"){
                         functionOfMvccrcCount[0]++;
                     } else {
@@ -387,8 +387,8 @@ async function fixRate() {
                 let toId = sample();
                 let id = sample();
                 if(functionNum==1){
-                    sendPayment(contract, checkingValue, toId, fromId).then((res)=>{  
-                        if(res[1]=="MVCCRC"){
+                    sendPayment(contract, type, checkingValue, toId, fromId).then((res)=>{  
+                        if(res[1]=="MVCCRC"){    
                             functionOfMvccrcCount[1]++;
                         } else {
                             functionOfSuccessCount[1]++;
@@ -397,7 +397,7 @@ async function fixRate() {
                     })
                     console.log(`sendPayment`);
                 } else if (functionNum==2){
-                    writeCheck(contract, checkingValue, id).then((res)=>{
+                    writeCheck(contract, type, checkingValue, id).then((res)=>{
                         if(res[1]=="MVCCRC"){
                             functionOfMvccrcCount[2]++;
                         } else {
@@ -415,7 +415,7 @@ async function fixRate() {
                     })
                     console.log(`transactSavings`);
                 } else if (functionNum==4){
-                    depositChecking(contract, checkingValue, id).then((res)=>{
+                    depositChecking(contract, type, checkingValue, id).then((res)=>{
                         if(res[1]=="MVCCRC"){
                             functionOfMvccrcCount[4]++;
                         } else {
@@ -424,7 +424,7 @@ async function fixRate() {
                     })
                     console.log(`depositChecking`);
                 } else if (functionNum==5){
-                    amalgamate(contract, toId, fromId).then((res)=>{
+                    amalgamate(contract, type, toId, fromId).then((res)=>{
                         if(res[1]=="MVCCRC"){
                             functionOfMvccrcCount[5]++;
                         } else {

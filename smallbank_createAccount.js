@@ -41,7 +41,7 @@ require('dotenv').config();
 
 
 const mintBool = false;
-const amountOfAccount = 200;
+const amountOfAccount = 10000;
 const amountOfHotAccount = 10;
 const probOfSendHotAccount = 0;
 const probOfReceiptHotAccount = 0;
@@ -70,7 +70,7 @@ let txData = [];
 let gateways = [];
 let getBalanceComplete = 0;
 let transferComplete = 0;
-
+let type = 0;
 
 
 
@@ -89,7 +89,7 @@ let count = 0; // count = success + fail1 + fail2
 
 const { Gateway, Wallets } = require('fabric-network');
 const FabricCAServices = require('fabric-ca-client');
-const { controllerParameterModify, oneByOnePlusResend, normalPlusResend, evaluateTransactionPlusResend, oneByOneController, normalController, oneByOne, normal, controller } = require('./transactioncontroller');
+const { controllerParameterModify, oneByOneResend, normalResend, oneByOneResendDelay, normalResendDelay, evaluateTransactionResend, oneByOneController, normalController, oneByOne, normal, controller} = require('./transactioncontroller');
 const path = require('path');
 const { buildCAClient, registerAndEnrollUser, enrollAdmin } = require('./test-application/javascript/CAUtil.js');
 const { buildCCPOrg1, buildWallet } = require('./test-application/javascript/AppUtil.js');
@@ -252,72 +252,72 @@ async function getCC(ccp, wallet, user) {
 
 
 
-async function createAccount(contract, id, name, checkingBalance, savingsBalance) {
+async function createAccount(contract, type, id, name, checkingBalance, savingsBalance) {
     try {
         let key = id;
         var args = [id, name, checkingBalance, savingsBalance].map(d => `"${d}"`).join(',');
         // console.log(`"[${args}]"`);
-        return await oneByOne(contract, 'CreateAccount', key, [`[${args}]`]);
+        return await oneByOne(contract, type, 'CreateAccount', key, [`[${args}]`]);
     } catch (error) {
         console.error(`******** FAILED to createAccount: ${error}`);
         return error;
     }
 }
 
-async function query(contract, id) {
+async function query(contract, type, id) {
     try {
         var args = [id].map(d => `"${d}"`).join(',');
-        return await normal(contract, 'Query', [`[${args}]`]);
+        return await normal(contract, type, 'Query', [`[${args}]`]);
     } catch (error) {
         console.error(`******** FAILED to query: ${error}`);
     }
 
 }
 
-async function sendPayment(contract, checkingValue, toId, fromId) {
+async function sendPayment(contract, type, checkingValue, toId, fromId) {
     try {
         var args = [checkingValue, toId, fromId].map(d => `"${d}"`).join(',');
-        return await normal(contract, 'SendPayment', [`[${args}]`]);
+        return await normal(contract, type, 'SendPayment', [`[${args}]`]);
     } catch (error) {
         console.error(`******** FAILED to sendPayment: ${error}`);
         return error;
     }
 }
 
-async function writeCheck(contract, checkingValue, id) {
+async function writeCheck(contract, type, checkingValue, id) {
     try {
         var args = [checkingValue, id].map(d => `"${d}"`).join(',');
-        return await normal(contract, 'WriteCheck', [`[${args}]`]);
+        return await normal(contract, type, 'WriteCheck', [`[${args}]`]);
     } catch (error) {
         console.error(`******** FAILED to writeCheck: ${error}`);
         return error;
     }
 }
 
-async function transactSavings(contract, savingValue, id) {
+async function transactSavings(contract, type, savingValue, id) {
     try {
         var args = [savingValue, id].map(d => `"${d}"`).join(',');
-        return await normal(contract, 'TransactSavings', [`[${args}]`]);
+        return await normal(contract, type, 'TransactSavings', [`[${args}]`]);
     } catch (error) {
         console.error(`******** FAILED to transactSavings: ${error}`);
         return error;
     }
 }
 
-async function depositChecking(contract, checkingValue, id) {
+async function depositChecking(contract, type, checkingValue, id) {
     try {
         var args = [checkingValue, checkingValue, id].map(d => `"${d}"`).join(',');
-        return await normal(contract, 'DepositChecking', [`[${args}]`]);
+        return await normal(contract, type, 'DepositChecking', [`[${args}]`]);
     } catch (error) {
         console.error(`******** FAILED to depositChecking: ${error}`);
         return error;
     }
 }
 
-async function amalgamate(contract, toId, fromId) {
+async function amalgamate(contract, type, toId, fromId) {
     try {
         var args = [toId, fromId].map(d => `"${d}"`).join(',');
-        return await normal(contract, 'amalgamate', [`[${args}]`]);
+        return await normal(contract, type, 'amalgamate', [`[${args}]`]);
     } catch (error) {
         console.error(`******** FAILED to amalgamate: ${error}`);
         return error;
@@ -345,7 +345,7 @@ async function main(){
 
     for (let i = 0; i < amountOfAccount; i++){
         try {
-            createAccount(contract, `${i}`, `n_${i}`, `1000`, `500`).then(async (res)=>{
+            createAccount(contract, type, `${i}`, `n_${i}`, `1000`, `500`).then(async (res)=>{
                 console.log(res);
                 successOfCreateAccount++;
                 console.log(successOfCreateAccount);
