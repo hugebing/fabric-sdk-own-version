@@ -19,6 +19,11 @@ const amountOfAccount = parseInt(process.env.amountOfAccount);
 const skew = parseFloat(process.env.skew);
 const probOfFunc = parseInt(process.env.probOfFunc);
 const type = parseInt(process.env.type);
+const startTime = parseInt(process.env.startTime);
+const hotAccount = process.env.hotAccount;
+const functionType = process.env.functionType;
+const readType = process.env.readType;
+const writeType = process.env.writeType;
 // const mintBool = (process.env.mintBool === 'true');
 // const amountOfAccount = parseInt(process.env.amountOfAccount);
 // const amountOfHotAccount = parseInt(process.env.amountOfHotAccount);
@@ -263,7 +268,12 @@ async function createAccount(contract, type, id, name, checkingBalance, savingsB
         let key = id;
         var args = [id, name, checkingBalance, savingsBalance].map(d => `"${d}"`).join(',');
         // console.log(`"[${args}]"`);
-        return await oneByOne(contract, type, 'CreateAccount', key, [`[${args}]`]);
+        if(writeType=='txQueue'){
+            return await oneByOne(contract, type, 'CreateAccount', key, [`[${args}]`]);
+        } else {
+            return await normal(contract, type, 'CreateAccount', [`[${args}]`]);
+        }
+        
     } catch (error) {
         console.error(`******** FAILED to createAccount: ${error}`);
         return error;
@@ -274,7 +284,14 @@ async function query(contract, type, id) {
     try {
         let key = id;
         var args = [id].map(d => `"${d}"`).join(',');
-        return await oneByOne(contract, type, 'Query', key, [`[${args}]`]);
+        if(readType=='txQueue'){
+            console.log('aaaaaaaaaaaaaaa');
+            return await oneByOne(contract, type, 'Query', key, [`[${args}]`]);
+        } else {
+            console.log('bbbbbbbbbbbbbbbb');
+            return await normal(contract, type, 'Query', [`[${args}]`]);
+        }
+        
     } catch (error) {
         console.error(`******** FAILED to query: ${error}`);
     }
@@ -284,13 +301,18 @@ async function query(contract, type, id) {
 async function sendPayment(contract, type, checkingValue, toId, fromId) {
     try {
         let key;
-        if(fromId < toId){
-            key = `${fromId}_${toId}`;
+        if(hotAccount=='recipient'){
+            key = toId;
         } else {
-            key = `${toId}_${fromId}`;
+            key = fromId;
         }
         var args = [checkingValue, toId, fromId].map(d => `"${d}"`).join(',');
-        return await oneByOne(contract, type, 'SendPayment', key, [`[${args}]`]);
+        if(writeType=='txQueue'){
+            return await oneByOne(contract, type, 'SendPayment', key, [`[${args}]`]);
+        } else {
+            return await normal(contract, type, 'SendPayment', [`[${args}]`]);
+        }
+        
     } catch (error) {
         console.error(`******** FAILED to sendPayment: ${error}`);
         return error;
@@ -301,7 +323,12 @@ async function writeCheck(contract, type, checkingValue, id) {
     try {
         let key = id;
         var args = [checkingValue, id].map(d => `"${d}"`).join(',');
-        return await oneByOne(contract, type, 'WriteCheck', key, [`[${args}]`]);
+        if(writeType=='txQueue'){
+            return await oneByOne(contract, type, 'WriteCheck', key, [`[${args}]`]);
+        } else {
+            return await normal(contract, type, 'WriteCheck', [`[${args}]`]);
+        }
+        
     } catch (error) {
         console.error(`******** FAILED to writeCheck: ${error}`);
         return error;
@@ -312,7 +339,12 @@ async function transactSavings(contract, type, savingValue, id) {
     try {
         let key = id;
         var args = [savingValue, id].map(d => `"${d}"`).join(',');
-        return await oneByOne(contract, type, 'TransactSavings', key, [`[${args}]`]);
+        if(writeType=='txQueue'){
+            return await oneByOne(contract, type, 'TransactSavings', key, [`[${args}]`]);
+        } else {
+            return await normal(contract, type, 'TransactSavings', [`[${args}]`]);
+        }
+        
     } catch (error) {
         console.error(`******** FAILED to transactSavings: ${error}`);
         return error;
@@ -323,7 +355,12 @@ async function depositChecking(contract, type, checkingValue, id) {
     try {
         let key = id;
         var args = [checkingValue, id].map(d => `"${d}"`).join(',');
-        return await oneByOne(contract, type, 'DepositChecking', key, [`[${args}]`]);
+        if(writeType=='txQueue'){
+            return await oneByOne(contract, type, 'DepositChecking', key, [`[${args}]`]);
+        } else {
+            return await normal(contract, type, 'DepositChecking', [`[${args}]`]);
+        }
+        
     } catch (error) {
         console.error(`******** FAILED to depositChecking: ${error}`);
         return error;
@@ -333,13 +370,18 @@ async function depositChecking(contract, type, checkingValue, id) {
 async function amalgamate(contract, type, toId, fromId) {
     try {
         let key;
-        if(fromId < toId){
-            key = `${fromId}_${toId}`;
+        if(hotAccount=='recipient'){
+            key = toId;
         } else {
-            key = `${toId}_${fromId}`;
+            key = fromId;
         }
         var args = [toId, fromId].map(d => `"${d}"`).join(',');
-        return await oneByOne(contract, type, 'amalgamate', key, [`[${args}]`]);
+        
+        if(writeType=='txQueue'){
+            return await oneByOne(contract, type, 'amalgamate', key, [`[${args}]`]);
+        } else {
+            return await normal(contract, type, 'amalgamate', [`[${args}]`]);
+        }
     } catch (error) {
         console.error(`******** FAILED to amalgamate: ${error}`);
         return error;
@@ -356,7 +398,6 @@ async function amalgamate(contract, type, toId, fromId) {
 function getRandom(min, max) {
     return Math.floor(Math.random() * (max - min)) + min;
 };
-
 let functionOfSuccessCount = [0, 0, 0, 0, 0, 0]
 let functionOfMvccrcCount = [0, 0, 0, 0, 0, 0]
 async function fixRate() {
@@ -367,10 +408,18 @@ async function fixRate() {
         if(Date.now() - preTime >= totalDuration){
             break;
         }
-
         for(let i = 0;i < rps;i++){ 
+            let fromId;
+            let toId;
+            let id;
+            
             if(getRandom(1, 101)>probOfFunc){
-                query(contract, type, sample()).then((res)=>{
+                if(hotAccount=='all'){
+                    id = sample();
+                } else {
+                    id = getRandom(0, amountOfAccount);
+                }
+                query(contract, type, id).then((res)=>{
                     if(res[1]=="MVCCRC"){
                         functionOfMvccrcCount[0]++;
                     } else {
@@ -378,12 +427,31 @@ async function fixRate() {
                     }
                 })
             } else {
-                let functionNum = getRandom(1, 6);
+                let functionNum;
+                if(functionType=='all'){
+                    functionNum = getRandom(1, 6);
+                } else {
+                    functionNum = 1;
+                }
+
+               
+                if(hotAccount=='all'){
+                    fromId = sample();
+                    toId = sample();
+                    id = sample();
+                } else if (hotAccount=='sender'){
+                    fromId = sample();
+                    toId = getRandom(0, amountOfAccount);
+                    id = sample();
+                } else if (hotAccount=='recipient'){
+                    fromId = getRandom(0, amountOfAccount);
+                    toId = sample();
+                    id = sample();
+                }
+                
                 let checkingValue = 1;
                 let savingValue = 1;
-                let fromId = sample();
-                let toId = sample();
-                let id = sample();
+
                 if(functionNum==1){
                     sendPayment(contract, type, checkingValue, toId, fromId).then((res)=>{  
                         if(res[1]=="MVCCRC"){    
@@ -456,7 +524,7 @@ async function fixRate() {
 
 async function main(){
 
-    let startTime = Date.now() + (1000 - (Date.now() % 1000)) + 1000;
+    // let startTime = Date.now() + (1000 - (Date.now() % 1000)) + 1000;
 
     var controllerParameterModifyInterval = setInterval(function(){ controllerParameterModify() }, 1000);
     var normalControllerInterval = setInterval(function(){ normalController() }, 100);
@@ -505,7 +573,8 @@ async function main(){
                 "transactSavingsOfMvccrc": functionOfMvccrcCount[3],
                 "depositCheckingOfMvccrc": functionOfMvccrcCount[4],
                 "amalgamateOfMvccrc": functionOfMvccrcCount[5],
-                "tps": res.amountOfCompleteTransaction/(totalDuration/1000)
+                "tps": res.amountOfCompleteTransaction/(totalDuration/1000),
+                "amount":1
             }
             clearInterval(controllerParameterModifyInterval);
             clearInterval(oneByOneControllerInterval);
@@ -529,7 +598,8 @@ async function main(){
                     result.transactSavingsOfMvccrc += res.transactSavingsOfMvccrc;
                     result.depositCheckingOfMvccrc += res.depositCheckingOfMvccrc;
                     result.amalgamateOfMvccrc += res.amalgamateOfMvccrc;
-                    result.tps = result.amountOfCompleteTransaction/(totalDuration/1000)
+                    result.tps = result.amountOfCompleteTransaction/(totalDuration/1000);
+                    result.amount = res.amount + 1;
                 })
                 fs.writeFileSync(`data/${folderName}/total.txt`, JSON.stringify(result));
             } else {

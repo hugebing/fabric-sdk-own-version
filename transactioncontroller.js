@@ -4,13 +4,15 @@ const fs = require("fs");
 
 let timeOfFile = Date.now();
 const folderName = process.env.folderName;
+var rand = Math.ceil(Math.random()*1000000);
+console.log(rand);
 
 const logOfTransaction = new Console({
-    stdout: fs.createWriteStream(`data/${folderName}/${timeOfFile}_logOfTransaction`),
+    stdout: fs.createWriteStream(`data/${folderName}/${timeOfFile}${rand}_logOfTransaction`),
 });
 
 const logOfResult = new Console({
-    stdout: fs.createWriteStream(`data/${folderName}/${timeOfFile}_logOfResult`),
+    stdout: fs.createWriteStream(`data/${folderName}/${timeOfFile}${rand}_logOfResult`),
 });
 
 var oneByOneQueue = {};
@@ -74,7 +76,7 @@ async function createTransactionAndGetData(contract, name){
     return await contract.createTransaction(name);
 }
 
-exports.normalController = async () => {;
+exports.normalController = async () => {
     while(true){
         if(normalQueue.length == 0 || amountOfPendingTransaction >= upperOfPendingTransaction){
             break;
@@ -156,7 +158,7 @@ async function submitTransaction(transaction, type, args, countOfResned=0){
                     minusPendingTransaction();
                     return [transaction.getTransactionId(), 'MVCCRC'];
                 }  
-            } else if (errMg.toString().includes("exceeding concurrency limit") || errMg[0].toString().includes("No endorsement plan available")){
+            } else if (errMg.toString().includes("exceeding concurrency limit") || errMg.toString().includes("No endorsement plan available")){
                 countOfExorbitantRPS += 1;
                 logOfTransaction.log([transaction.getTransactionId(), 'ERROR TOO MANY TRANSACTION OR PARAMETER ERROR', countOfResned, startTime, Date.now()]);
                 amountOfErrorOfTransaction += 1;
