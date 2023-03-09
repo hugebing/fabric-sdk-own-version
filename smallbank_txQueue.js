@@ -24,6 +24,7 @@ const hotAccount = process.env.hotAccount;
 const functionType = process.env.functionType;
 const readType = process.env.readType;
 const writeType = process.env.writeType;
+const rps = parseInt(process.env.rps);
 // const mintBool = (process.env.mintBool === 'true');
 // const amountOfAccount = parseInt(process.env.amountOfAccount);
 // const amountOfHotAccount = parseInt(process.env.amountOfHotAccount);
@@ -56,7 +57,6 @@ const writeType = process.env.writeType;
 
 // const resendLatencyBool = false;
 const benchmarkType = 'fixRate';
-const rps = 200;
 // const delayUpper = 10000;
 const totalDuration = 60000;
 // const totalDuration = 0;
@@ -285,10 +285,8 @@ async function query(contract, type, id) {
         let key = id;
         var args = [id].map(d => `"${d}"`).join(',');
         if(readType=='txQueue'){
-            console.log('aaaaaaaaaaaaaaa');
             return await oneByOne(contract, type, 'Query', key, [`[${args}]`]);
         } else {
-            console.log('bbbbbbbbbbbbbbbb');
             return await normal(contract, type, 'Query', [`[${args}]`]);
         }
         
@@ -447,6 +445,10 @@ async function fixRate() {
                     fromId = getRandom(0, amountOfAccount);
                     toId = sample();
                     id = sample();
+                } else if (hotAccount=='null'){
+                    fromId = getRandom(0, amountOfAccount);
+                    toId = getRandom(0, amountOfAccount);
+                    id = getRandom(0, amountOfAccount);
                 }
                 
                 let checkingValue = 1;
